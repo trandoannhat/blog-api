@@ -2,13 +2,14 @@
 
 on:
   push:
-    branches: [ master ] # <--- Kiểm tra xem là main hay master nhé
+    branches: [ master ] # Nếu sau này bạn đổi nhánh chính thành main thì nhớ sửa chỗ này
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -16,7 +17,8 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Publish API
-        run: dotnet publish -c Release -o ./out # Đổi tên folder đầu ra cho rõ ràng
+        # Dùng đường dẫn out cố định để dễ quản lý
+        run: dotnet publish -c Release -o out
 
       - name: Deploy to Server
         uses: appleboy/scp-action@master
@@ -25,10 +27,13 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: "./out/*"
+          source: "out/*"
           target: "/home/nhatdev/apps/api/publish"
           strip_components: 1
-          overwrite: true # Cho phép ghi đè file cũ
+          overwrite: true
+          # Xóa toàn bộ file cũ trong thư mục publish trước khi chép file mới 
+          # để tránh xung đột file cũ/mới
+          rm: true 
 
       - name: Restart API Service
         uses: appleboy/ssh-action@master
@@ -38,7 +43,15 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            # Đảm bảo quyền sở hữu đúng cho user (nếu cần)
+            # 1. Chuyển quyền sở hữu cho root (vì service chạy quyền root)
             sudo chown -R root:root /home/nhatdev/apps/api/publish
-            # Khởi động lại service
+            
+            # 2. Cấp quyền thực thi (nếu cần)
+            sudo chmod +x /home/nhatdev/apps/api/publish/DevBlog.API.dll
+            
+            # 3. Khởi động lại service
             sudo systemctl restart devblog-api.service
+            
+            # 4. Đợi 2 giây rồi kiểm tra trạng thái xem có bị lỗi 'exit-code' nữa không
+            sleep 2
+            sudo systemctl status devblog-api.service --no-pager
