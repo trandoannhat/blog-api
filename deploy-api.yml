@@ -2,7 +2,7 @@
 
 on:
   push:
-    branches: [ master ] # Nếu sau này bạn đổi nhánh chính thành main thì nhớ sửa chỗ này
+    branches: [ master ] 
 
 jobs:
   build-and-deploy:
@@ -17,8 +17,12 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Publish API
-        # Dùng đường dẫn out cố định để dễ quản lý
-        run: dotnet publish -c Release -o out
+        # Tìm tất cả file csproj và build, đẩy thẳng vào folder 'out' không chia thư mục con
+        run: dotnet publish **/DevBlog.API.csproj -c Release -o out /p:UseAppHost=false
+
+      - name: Verify Build (Debug)
+        # Bước này để bạn kiểm tra xem file có tồn tại trong máy ảo GitHub không
+        run: ls -R out
 
       - name: Deploy to Server
         uses: appleboy/scp-action@master
@@ -31,8 +35,6 @@ jobs:
           target: "/home/nhatdev/apps/api/publish"
           strip_components: 1
           overwrite: true
-          # Xóa toàn bộ file cũ trong thư mục publish trước khi chép file mới 
-          # để tránh xung đột file cũ/mới
           rm: true 
 
       - name: Restart API Service
@@ -43,15 +45,17 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            # 1. Chuyển quyền sở hữu cho root (vì service chạy quyền root)
+            # Đảm bảo thư mục tồn tại và đúng quyền
             sudo chown -R root:root /home/nhatdev/apps/api/publish
             
-            # 2. Cấp quyền thực thi (nếu cần)
-            sudo chmod +x /home/nhatdev/apps/api/publish/DevBlog.API.dll
-            
-            # 3. Khởi động lại service
+            # Khởi động lại service
+            sudo systemctl daemon-reload
             sudo systemctl restart devblog-api.service
             
-            # 4. Đợi 2 giây rồi kiểm tra trạng thái xem có bị lỗi 'exit-code' nữa không
+            # Kiểm tra xem file đã xuất hiện chưa
+            echo "Kiem tra file DLL trên VPS:"
+            ls -l /home/nhatdev/apps/api/publish/DevBlog.API.dll
+            
+            # Xem trang thai service
             sleep 2
             sudo systemctl status devblog-api.service --no-pager
