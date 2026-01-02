@@ -25,7 +25,12 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
-
+// Thêm đoạn này để tự động tạo bảng khi API khởi động lần đầu trên Server
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 // 3. Cấu hình Forwarded Headers (BẮT BUỘC khi chạy sau Nginx trên Linux)
 // Giúp .NET hiểu được giao thức https và IP thật từ Nginx gửi tới
 app.UseForwardedHeaders(new ForwardedHeadersOptions
